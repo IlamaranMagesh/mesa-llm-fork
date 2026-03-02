@@ -397,6 +397,43 @@ class TestReWOOReasoning:
         assert isinstance(result, Plan)
         assert reasoning.remaining_tool_calls == 0
 
+    def test_aplan_uses_step_prompt_when_no_prompt_given(self):
+        """Test aplan falls back to agent.step_prompt like sync plan does."""
+        mock_agent = Mock()
+        mock_agent.step_prompt = "Default step prompt"
+        mock_agent.generate_obs.return_value = Observation(
+            step=1, self_state={}, local_state={}
+        )
+        mock_agent.memory = Mock()
+        mock_agent.memory.format_long_term.return_value = "Long term memory"
+        mock_agent.memory.format_short_term.return_value = "Short term memory"
+        mock_agent.memory.add_to_memory = Mock()
+        mock_agent.llm = Mock()
+        mock_agent.tool_manager = Mock()
+        mock_agent.tool_manager.get_all_tools_schema.return_value = {}
+
+        mock_plan_response = Mock()
+        mock_plan_response.choices = [Mock()]
+        mock_plan_response.choices[0].message.content = "Async plan content"
+
+        mock_exec_response = Mock()
+        mock_exec_response.choices = [Mock()]
+        mock_exec_response.choices[0].message = Mock()
+        mock_exec_response.choices[0].message.tool_calls = [Mock()]
+
+        mock_agent.llm.agenerate = AsyncMock(
+            side_effect=[mock_plan_response, mock_exec_response]
+        )
+
+        reasoning = ReWOOReasoning(mock_agent)
+        reasoning.aexecute_tool_call = AsyncMock(
+            return_value=Plan(step=1, llm_plan=mock_exec_response.choices[0].message)
+        )
+
+        # Call without prompt — should use agent.step_prompt
+        result = asyncio.run(reasoning.aplan())
+        assert isinstance(result, Plan)
+
     def test_remaining_tool_calls_decrement(self):
         """Test that remaining_tool_calls is properly decremented."""
         mock_agent = Mock()
