@@ -58,7 +58,7 @@ class TestReasoningBase:
 
         # 2. Instantiate a concrete implementation of Reasoning to test the base method
         class ConcreteReasoning(Reasoning):
-            def plan(self, prompt, obs=None, ttl=1, selected_tools=None):
+            def plan(self, prompt=None, obs=None, ttl=1, selected_tools=None):
                 pass  # Not needed for this test
 
         reasoning = ConcreteReasoning(agent=mock_agent)
@@ -84,3 +84,24 @@ class TestReasoningBase:
         assert isinstance(result_plan, Plan)
         assert result_plan.step == 5
         assert result_plan.llm_plan.content == "Final LLM message"
+        assert result_plan.ttl == 1
+
+    def test_execute_tool_call_propagates_ttl(self):
+        """Test that execute_tool_call propagates caller-provided TTL."""
+        mock_agent = Mock()
+        mock_agent.model.steps = 5
+        mock_llm_response = Mock()
+        mock_llm_response.choices = [Mock()]
+        mock_llm_response.choices[0].message = "Final LLM message"
+        mock_agent.llm.generate.return_value = mock_llm_response
+        mock_agent.tool_manager.get_all_tools_schema.return_value = []
+
+        class ConcreteReasoning(Reasoning):
+            def plan(self, prompt=None, obs=None, ttl=1, selected_tools=None):
+                pass
+
+        reasoning = ConcreteReasoning(agent=mock_agent)
+        result_plan = reasoning.execute_tool_call("Execute the plan.", ttl=7)
+
+        assert isinstance(result_plan, Plan)
+        assert result_plan.ttl == 7

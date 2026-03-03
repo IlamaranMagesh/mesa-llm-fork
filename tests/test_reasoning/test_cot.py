@@ -77,12 +77,13 @@ class TestCoTReasoning:
         # Create an observation (step 0 -> plan.step should be 1)
         obs = Observation(step=0, self_state={}, local_state={})
 
-        plan = agent.reasoning.plan(obs)
+        plan = agent.reasoning.plan(obs=obs)
 
         # Assertions
         assert isinstance(plan, Plan)
         assert plan.step == 1
         assert plan.llm_plan.content == "mock execution"
+        assert plan.ttl == 1
         # and our memory.add_to_memory should at least have been called once with type="observation"
         mock_memory.add_to_memory.assert_any_call(
             type="Observation",
@@ -111,9 +112,10 @@ class TestCoTReasoning:
 
         obs = Observation(step=1, self_state={}, local_state={})
         selected_tools = ["tool1", "tool2"]
-        result = reasoning.plan(obs=obs, selected_tools=selected_tools)
+        result = reasoning.plan(obs=obs, ttl=3, selected_tools=selected_tools)
 
         assert isinstance(result, Plan)
+        assert result.ttl == 3
         # Check that tool schema was called with selected tools
         assert mock_agent.tool_manager.get_all_tools_schema.call_count == 2
 
@@ -155,8 +157,9 @@ class TestCoTReasoning:
 
         obs = Observation(step=1, self_state={}, local_state={})
 
-        result = asyncio.run(reasoning.aplan(prompt="Async prompt", obs=obs))
+        result = asyncio.run(reasoning.aplan(prompt="Async prompt", obs=obs, ttl=4))
 
         assert isinstance(result, Plan)
         assert result.step == 2
+        assert result.ttl == 4
         assert mock_agent.llm.agenerate.call_count == 2

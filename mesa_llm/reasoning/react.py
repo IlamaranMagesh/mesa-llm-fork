@@ -58,25 +58,29 @@ class ReActReasoning(Reasoning):
 
     def plan(
         self,
-        obs: Observation,
-        ttl: int = 1,
         prompt: str | None = None,
+        obs: Observation | None = None,
+        ttl: int = 1,
         selected_tools: list[str] | None = None,
     ) -> Plan:
         """
         Plan the next (ReAct) action based on the current observation and the agent's memory.
         """
 
+        if obs is None:
+            obs = self.agent.generate_obs()
+
         # ---------------- prepare the prompt ----------------
         self.agent.llm.system_prompt = self.get_react_system_prompt()
         prompt_list = self.get_react_prompt(obs)
 
-        # If no prompt is provided, use the agent's default step prompt
-        if prompt is None:
-            if self.agent.step_prompt is not None:
-                prompt_list.append(self.agent.step_prompt)
-            else:
-                raise ValueError("No prompt provided and agent.step_prompt is None.")
+        # Add user prompt (explicit prompt takes precedence over default step prompt)
+        if prompt is not None:
+            prompt_list.append(prompt)
+        elif self.agent.step_prompt is not None:
+            prompt_list.append(self.agent.step_prompt)
+        else:
+            raise ValueError("No prompt provided and agent.step_prompt is None.")
 
         selected_tools_schema = self.agent.tool_manager.get_all_tools_schema(
             selected_tools
@@ -96,32 +100,37 @@ class ReActReasoning(Reasoning):
 
         # ---------------- execute the plan ----------------
         react_plan = self.execute_tool_call(
-            formatted_response["action"], selected_tools
+            formatted_response["action"],
+            selected_tools=selected_tools,
+            ttl=ttl,
         )
 
         return react_plan
 
     async def aplan(
         self,
-        obs: Observation,
-        ttl: int = 1,
         prompt: str | None = None,
+        obs: Observation | None = None,
+        ttl: int = 1,
         selected_tools: list[str] | None = None,
     ) -> Plan:
         """
         Asynchronous version of plan() method for parallel planning.
         """
+        if obs is None:
+            obs = await self.agent.agenerate_obs()
 
         # ---------------- prepare the prompt ----------------
         self.agent.llm.system_prompt = self.get_react_system_prompt()
         prompt_list = self.get_react_prompt(obs)
 
-        # If no prompt is provided, use the agent's default step prompt
-        if prompt is None:
-            if self.agent.step_prompt is not None:
-                prompt_list.append(self.agent.step_prompt)
-            else:
-                raise ValueError("No prompt provided and agent.step_prompt is None.")
+        # Add user prompt (explicit prompt takes precedence over default step prompt)
+        if prompt is not None:
+            prompt_list.append(prompt)
+        elif self.agent.step_prompt is not None:
+            prompt_list.append(self.agent.step_prompt)
+        else:
+            raise ValueError("No prompt provided and agent.step_prompt is None.")
 
         selected_tools_schema = self.agent.tool_manager.get_all_tools_schema(
             selected_tools
@@ -142,7 +151,9 @@ class ReActReasoning(Reasoning):
 
         # ---------------- execute the plan ----------------
         react_plan = await self.aexecute_tool_call(
-            formatted_response["action"], selected_tools
+            formatted_response["action"],
+            selected_tools=selected_tools,
+            ttl=ttl,
         )
 
         return react_plan

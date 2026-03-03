@@ -79,7 +79,7 @@ class Reasoning(ABC):
     @abstractmethod
     def plan(
         self,
-        prompt: str,
+        prompt: str | None = None,
         obs: Observation | None = None,
         ttl: int = 1,
         selected_tools: list[str] | None = None,
@@ -88,7 +88,7 @@ class Reasoning(ABC):
 
     async def aplan(
         self,
-        prompt: str,
+        prompt: str | None = None,
         obs: Observation | None = None,
         ttl: int = 1,
         selected_tools: list[str] | None = None,
@@ -97,10 +97,18 @@ class Reasoning(ABC):
         Asynchronous version of plan() method for parallel planning.
         Default implementation calls the synchronous plan() method.
         """
-        return self.plan(prompt, obs, ttl, selected_tools)
+        return self.plan(
+            prompt=prompt,
+            obs=obs,
+            ttl=ttl,
+            selected_tools=selected_tools,
+        )
 
     def execute_tool_call(
-        self, chaining_message, selected_tools: list[str] | None = None
+        self,
+        chaining_message,
+        selected_tools: list[str] | None = None,
+        ttl: int = 1,
     ):
         system_prompt = "You are an executor that executes the plan given to you in the prompt through tool calls."
         self.agent.llm.system_prompt = system_prompt
@@ -112,12 +120,15 @@ class Reasoning(ABC):
             tool_choice="required",
         )
         response_message = rsp.choices[0].message
-        plan = Plan(step=self.agent.model.steps, llm_plan=response_message, ttl=1)
+        plan = Plan(step=self.agent.model.steps, llm_plan=response_message, ttl=ttl)
 
         return plan
 
     async def aexecute_tool_call(
-        self, chaining_message, selected_tools: list[str] | None = None
+        self,
+        chaining_message,
+        selected_tools: list[str] | None = None,
+        ttl: int = 1,
     ):
         """
         Asynchronous version of execute_tool_call() method.
@@ -132,6 +143,6 @@ class Reasoning(ABC):
             tool_choice="required",
         )
         response_message = rsp.choices[0].message
-        plan = Plan(step=self.agent.model.steps, llm_plan=response_message, ttl=1)
+        plan = Plan(step=self.agent.model.steps, llm_plan=response_message, ttl=ttl)
 
         return plan

@@ -87,9 +87,9 @@ class CoTReasoning(Reasoning):
 
     def plan(
         self,
-        obs: Observation,
-        ttl: int = 1,
         prompt: str | None = None,
+        obs: Observation | None = None,
+        ttl: int = 1,
         selected_tools: list[str] | None = None,
     ) -> Plan:
         """
@@ -101,6 +101,9 @@ class CoTReasoning(Reasoning):
                 prompt = self.agent.step_prompt
             else:
                 raise ValueError("No prompt provided and agent.step_prompt is None.")
+
+        if obs is None:
+            obs = self.agent.generate_obs()
 
         step = obs.step + 1
         llm = self.agent.llm
@@ -135,7 +138,7 @@ class CoTReasoning(Reasoning):
             tool_choice="required",
         )
         response_message = rsp.choices[0].message
-        cot_plan = Plan(step=step, llm_plan=response_message, ttl=1)
+        cot_plan = Plan(step=step, llm_plan=response_message, ttl=ttl)
 
         self.agent.memory.add_to_memory(
             type="Plan-Execution", content={"content": str(cot_plan)}
@@ -145,14 +148,24 @@ class CoTReasoning(Reasoning):
 
     async def aplan(
         self,
-        prompt: str,
-        obs: Observation,
+        prompt: str | None = None,
+        obs: Observation | None = None,
         ttl: int = 1,
         selected_tools: list[str] | None = None,
     ) -> Plan:
         """
         Asynchronous version of plan() method for parallel planning.
         """
+        # If no prompt is provided, use the agent's default step prompt
+        if prompt is None:
+            if self.agent.step_prompt is not None:
+                prompt = self.agent.step_prompt
+            else:
+                raise ValueError("No prompt provided and agent.step_prompt is None.")
+
+        if obs is None:
+            obs = await self.agent.agenerate_obs()
+
         step = obs.step + 1
         llm = self.agent.llm
 
@@ -181,7 +194,7 @@ class CoTReasoning(Reasoning):
             tool_choice="required",
         )
         response_message = rsp.choices[0].message
-        cot_plan = Plan(step=step, llm_plan=response_message, ttl=1)
+        cot_plan = Plan(step=step, llm_plan=response_message, ttl=ttl)
 
         await self.agent.memory.aadd_to_memory(
             type="Plan-Execution", content={"content": str(cot_plan)}
