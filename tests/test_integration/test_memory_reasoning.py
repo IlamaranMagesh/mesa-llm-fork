@@ -280,12 +280,14 @@ class TestCoTWithEpisodicMemory:
         plan = reasoning.plan(obs=obs)
 
         assert isinstance(plan, Plan)
-        assert memory.step_content["Observation"]["content"] == str(obs)
-        assert memory.step_content["Plan"]["content"] == plan_content
-        assert memory.step_content["Plan-Execution"]["content"] == str(plan)
-        assert memory.step_content["Observation"]["importance"] == 3
-        assert memory.step_content["Plan"]["importance"] == 3
-        assert memory.step_content["Plan-Execution"]["importance"] == 3
+        entries = list(memory.memory_entries)
+        assert len(entries) == 3
+        assert entries[0].content["Observation"]["content"] == str(obs)
+        assert entries[1].content["Plan"]["content"] == plan_content
+        assert entries[2].content["Plan-Execution"]["content"] == str(plan)
+        assert entries[0].content["Observation"]["importance"] == 3
+        assert entries[1].content["Plan"]["importance"] == 3
+        assert entries[2].content["Plan-Execution"]["importance"] == 3
         assert memory.grade_event_importance.call_count == 3
 
     def test_async_plan_works(self, monkeypatch):
@@ -301,12 +303,14 @@ class TestCoTWithEpisodicMemory:
         plan = asyncio.run(reasoning.aplan(obs=obs))
 
         assert isinstance(plan, Plan)
-        assert memory.step_content["Observation"]["content"] == str(obs)
-        assert memory.step_content["Plan"]["content"] == plan_content
-        assert memory.step_content["Plan-Execution"]["content"] == str(plan)
-        assert memory.step_content["Observation"]["importance"] == 3
-        assert memory.step_content["Plan"]["importance"] == 3
-        assert memory.step_content["Plan-Execution"]["importance"] == 3
+        entries = list(memory.memory_entries)
+        assert len(entries) == 3
+        assert entries[0].content["Observation"]["content"] == str(obs)
+        assert entries[1].content["Plan"]["content"] == plan_content
+        assert entries[2].content["Plan-Execution"]["content"] == str(plan)
+        assert entries[0].content["Observation"]["importance"] == 3
+        assert entries[1].content["Plan"]["importance"] == 3
+        assert entries[2].content["Plan-Execution"]["importance"] == 3
         assert memory.agrade_event_importance.await_count == 3
 
 
@@ -677,8 +681,10 @@ class TestReWOOWithEpisodicMemory:
 
         plan = reasoning.plan()
         assert isinstance(plan, Plan)
-        assert memory.step_content["plan"]["content"] == plan_content
-        assert memory.step_content["plan"]["importance"] == 3
+        entries = list(memory.memory_entries)
+        assert len(entries) == 1
+        assert entries[0].content["plan"]["content"] == plan_content
+        assert entries[0].content["plan"]["importance"] == 3
         assert memory.grade_event_importance.call_count == 1
         reasoning.execute_tool_call.assert_called_once_with(
             plan_content, selected_tools=None, ttl=1
@@ -699,8 +705,10 @@ class TestReWOOWithEpisodicMemory:
 
         plan = asyncio.run(reasoning.aplan())
         assert isinstance(plan, Plan)
-        assert memory.step_content["plan"]["content"] == plan_content
-        assert memory.step_content["plan"]["importance"] == 3
+        entries = list(memory.memory_entries)
+        assert len(entries) == 1
+        assert entries[0].content["plan"]["content"] == plan_content
+        assert entries[0].content["plan"]["importance"] == 3
         assert memory.grade_event_importance.call_count == 1
         reasoning.aexecute_tool_call.assert_awaited_once_with(
             plan_content, selected_tools=None, ttl=1
