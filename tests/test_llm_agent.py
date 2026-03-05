@@ -1,5 +1,6 @@
 # tests/test_llm_agent.py
 
+import json
 import re
 
 import pytest
@@ -612,3 +613,94 @@ def test_generate_obs_orthogonal_grid_branches(monkeypatch):
     obs = agent.generate_obs()
 
     assert len(obs.local_state) == 0
+
+
+# ---------------------------------------------------------------------------
+# send_message / asend_message – store unique_ids, not Agent objects (#156)
+# ---------------------------------------------------------------------------
+
+
+def _make_send_message_model(monkeypatch):
+    """Shared setup: two-agent MultiGrid model with ShortTermMemory."""
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy")
+
+    class DummyModel(Model):
+        def __init__(self):
+            super().__init__(seed=45)
+            self.grid = MultiGrid(3, 3, torus=False)
+
+        def add_agent(self, pos):
+            agents = LLMAgent.create_agents(
+                self,
+                n=1,
+                reasoning=lambda agent: None,
+                system_prompt="Test",
+                vision=-1,
+                internal_state=[],
+            )
+            agent = agents.to_list()[0]
+            self.grid.place_agent(agent, pos)
+            return agent
+
+    model = DummyModel()
+
+    sender = model.add_agent((0, 0))
+    sender.memory = ShortTermMemory(agent=sender, n=5, display=True)
+    sender.unique_id = 10
+
+    recipient = model.add_agent((1, 1))
+    recipient.memory = ShortTermMemory(agent=recipient, n=5, display=True)
+    recipient.unique_id = 20
+
+    return sender, recipient
+
+
+def test_send_message_stores_serializable_ids(monkeypatch):
+    """send_message stores sender/recipients as unique_ids, not Agent objects."""
+    sender, recipient = _make_send_message_model(monkeypatch)
+
+    captured = {}
+
+    def capture_content(type, content):
+        captured.update(content)
+
+    monkeypatch.setattr(recipient.memory, "add_to_memory", capture_content)
+    monkeypatch.setattr(sender.memory, "add_to_memory", lambda *a, **kw: None)
+
+    sender.send_message("hello", recipients=[recipient])
+
+    assert captured["sender"] == 10
+    assert captured["recipients"] == [20]
+    assert captured["message"] == "hello"
+
+    # Must not raise TypeError when serializing
+    data = json.loads(json.dumps(captured))
+    assert data["sender"] == 10
+    assert data["recipients"] == [20]
+
+
+@pytest.mark.asyncio
+async def test_asend_message_stores_serializable_ids(monkeypatch):
+    """asend_message stores sender/recipients as unique_ids, not Agent objects."""
+    sender, recipient = _make_send_message_model(monkeypatch)
+
+    captured = {}
+
+    async def capture_content(type, content):
+        captured.update(content)
+
+    async def noop(*a, **kw):
+        pass
+
+    monkeypatch.setattr(recipient.memory, "aadd_to_memory", capture_content)
+    monkeypatch.setattr(sender.memory, "aadd_to_memory", noop)
+
+    await sender.asend_message("hello", recipients=[recipient])
+
+    assert captured["sender"] == 10
+    assert captured["recipients"] == [20]
+    assert captured["message"] == "hello"
+
+    data = json.loads(json.dumps(captured))
+    assert data["sender"] == 10
+    assert data["recipients"] == [20]

@@ -267,8 +267,8 @@ class LLMAgent(Agent):
                 type="message",
                 content={
                     "message": message,
-                    "sender": self,
-                    "recipients": recipients,
+                    "sender": self.unique_id,
+                    "recipients": [r.unique_id for r in recipients],
                 },
             )
 
@@ -283,8 +283,8 @@ class LLMAgent(Agent):
                 type="message",
                 content={
                     "message": message,
-                    "sender": self,
-                    "recipients": recipients,
+                    "sender": self.unique_id,
+                    "recipients": [r.unique_id for r in recipients],
                 },
             )
 
