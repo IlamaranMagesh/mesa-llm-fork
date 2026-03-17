@@ -2,6 +2,7 @@ import datetime
 
 import mesa_llm.tools.inbuilt_tools  # noqa: F401, to register inbuilt tools
 
+from .fallback_brain import FallbackBrain
 from .parallel_stepping import (
     enable_automatic_parallel_stepping,
     step_agents_parallel,
@@ -15,6 +16,7 @@ from .tools.tool_manager import ToolManager
 enable_automatic_parallel_stepping()
 
 __all__ = [
+    "FallbackBrain",
     "Observation",
     "Plan",
     "ToolManager",
