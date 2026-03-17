@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from mesa.agent import Agent
 from mesa.discrete_space import (
     OrthogonalMooreGrid,
@@ -11,6 +13,7 @@ from mesa.space import (
 )
 
 from mesa_llm import Plan
+from mesa_llm.fallback_brain import FallbackBrain
 from mesa_llm.memory.st_lt_memory import STLTMemory
 from mesa_llm.module_llm import ModuleLLM
 from mesa_llm.reasoning.reasoning import (
@@ -29,10 +32,16 @@ class LLMAgent(Agent):
         llm_model (str): The model to use for the LLM in the format 'provider/model'. Defaults to 'gemini/gemini-2.0-flash'.
         system_prompt (str | None): Optional system prompt to be used in LLM completions.
         reasoning (str): Optional reasoning method to be used in LLM completions.
+        fallback_brain (FallbackBrain | None): Optional fallback system that activates
+            when the primary LLM raises an exception during a step.  The primary LLM
+            has no knowledge of the fallback; they are fully decoupled.
 
     Attributes:
-        llm (ModuleLLM): The internal LLM interface used by the agent.
+        llm (ModuleLLM | None): The internal LLM interface used by the agent.
+            Set to ``None`` when the agent has been degraded to a rule-based agent
+            by :class:`~mesa_llm.fallback_brain.FallbackBrain`.
         memory (Memory | None): The memory module attached to this agent, if any.
+        fallback_brain (FallbackBrain | None): The fallback brain instance, if any.
 
     """
 
@@ -45,12 +54,14 @@ class LLMAgent(Agent):
         vision: float | None = None,
         internal_state: list[str] | str | None = None,
         step_prompt: str | None = None,
+        fallback_brain: FallbackBrain | None = None,
     ):
         super().__init__(model=model)
 
         self.model = model
         self.step_prompt = step_prompt
         self.llm = ModuleLLM(llm_model=llm_model, system_prompt=system_prompt)
+        self.fallback_brain = fallback_brain
 
         self.memory = STLTMemory(
             agent=self,
@@ -328,6 +339,22 @@ class LLMAgent(Agent):
 
         await self.apost_step()
 
+    def _run_degraded_step(self):
+        """
+        Execute the deterministic fallback when the agent's LLM has been
+        nullified by :class:`~mesa_llm.fallback_brain.FallbackBrain`.
+
+        If a ``fallback_action`` is registered on the fallback brain, it is
+        called and its result returned.  Otherwise ``{"action": "idle"}`` is
+        returned as a safe baseline.
+        """
+        if (
+            self.fallback_brain is not None
+            and self.fallback_brain.fallback_action is not None
+        ):
+            return self.fallback_brain.fallback_action(self)
+        return {"action": "idle"}
+
     def __init_subclass__(cls, **kwargs):
         """
         Wrapper - allows to automatically integrate code to be executed after the step method of the child agent (created by the user) is called.
@@ -342,11 +369,26 @@ class LLMAgent(Agent):
             def wrapped(self, *args, **kwargs):
                 """
                 This is the wrapper that is used to integrate the pre_step and post_step methods into the step method of the child agent.
+                If the agent has been degraded to a deterministic agent (llm is None),
+                the fallback_action is executed directly instead of the LLM step.
+                If an exception is raised during the step and a fallback_brain is
+                present, the failure is routed to it for recovery or degradation.
                 """
+                # If the agent has been degraded, bypass LLM step entirely.
+                if self.llm is None:
+                    return self._run_degraded_step()
+
                 LLMAgent.pre_step(self, *args, **kwargs)
-                result = user_step(self, *args, **kwargs)
-                LLMAgent.post_step(self, *args, **kwargs)
-                return result
+                try:
+                    result = user_step(self, *args, **kwargs)
+                    LLMAgent.post_step(self, *args, **kwargs)
+                    return result
+                except Exception as e:
+                    if self.fallback_brain is not None:
+                        return self.fallback_brain.handle_failure(
+                            self, self.step_prompt, e
+                        )
+                    raise
 
             cls.step = wrapped
 
@@ -355,10 +397,25 @@ class LLMAgent(Agent):
             async def awrapped(self, *args, **kwargs):
                 """
                 Async wrapper for astep method.
+                If the agent has been degraded to a deterministic agent (llm is None),
+                the fallback_action is executed directly instead of the LLM step.
+                If an exception is raised during the step and a fallback_brain is
+                present, the failure is routed to it for recovery or degradation.
                 """
+                # If the agent has been degraded, bypass LLM step entirely.
+                if self.llm is None:
+                    return self._run_degraded_step()
+
                 await self.apre_step()
-                result = await user_astep(self, *args, **kwargs)
-                await self.apost_step()
-                return result
+                try:
+                    result = await user_astep(self, *args, **kwargs)
+                    await self.apost_step()
+                    return result
+                except Exception as e:
+                    if self.fallback_brain is not None:
+                        return self.fallback_brain.handle_failure(
+                            self, self.step_prompt, e
+                        )
+                    raise
 
             cls.astep = awrapped
